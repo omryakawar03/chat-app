@@ -14,6 +14,13 @@ export class User extends Document {
 
   @Prop({ type: Date, default: null })
   lastSeen: Date | null;
+  @Prop({ default: "" })
+bio: string;
+
+@Prop({ default: "" })
+avatar: string;
+@Prop()
+refreshToken?:string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

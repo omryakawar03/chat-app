@@ -23,7 +23,11 @@ export class ChatService {
     .find({ conversationId })
     .sort({ createdAt: 1 });
 }
-
+async deleteAllUserMessages(userId: string) {
+  await this.messageModel.deleteMany({
+    $or: [{ sender: userId }, { receiver: userId }],
+  });
+}
   async markMessagesAsSeen(roomId: string, userId: string) {
     await this.messageModel.updateMany(
       {

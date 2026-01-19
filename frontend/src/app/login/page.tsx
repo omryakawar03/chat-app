@@ -29,20 +29,21 @@ export default function LoginPage() {
 
       console.log("AUTH RESPONSE 👉", res.data);
 
-      // 🔒 SAFETY CHECK
-      if (!res.data?.user || !res.data?.token) {
+      // ✅ BACKEND CONTRACT (IMPORTANT)
+      const { accessToken, refreshToken, user } = res.data;
+
+      if (!accessToken || !refreshToken || !user?._id) {
         throw new Error("Invalid response from server");
       }
 
-      localStorage.setItem("token", res.data.token);
-      localStorage.setItem("userId", res.data.user._id);
+      // ✅ STORE TOKENS
+      localStorage.setItem("token", accessToken);
+      localStorage.setItem("refreshToken", refreshToken);
+      localStorage.setItem("userId", user._id);
 
       window.location.href = "/chat";
     } catch (err: any) {
-      console.error(
-        "LOGIN ERROR 👉",
-        err?.response?.data || err.message
-      );
+      console.error("LOGIN ERROR 👉", err?.response?.data || err.message);
 
       alert(
         err?.response?.data?.message ||

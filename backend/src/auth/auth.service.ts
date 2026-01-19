@@ -10,8 +10,24 @@ export class AuthService {
     private jwt: JwtService,
   ) {}
 
-  generateToken(userId: string) {
-    return this.jwt.sign({ userId });
+  // -------------------------
+  // TOKEN GENERATORS
+  // -------------------------
+  generateAccessToken(userId: string) {
+    return this.jwt.sign(
+      { sub: userId },
+      { expiresIn: '15m' },
+    );
+  }
+
+  generateRefreshToken(userId: string) {
+    return this.jwt.sign(
+      { sub: userId },
+      {
+        secret: process.env.JWT_REFRESH_SECRET,
+        expiresIn: '7d',
+      },
+    );
   }
 
   // -------------------------
@@ -32,7 +48,8 @@ export class AuthService {
 
     return {
       user,
-      token: this.generateToken(user._id.toString()),
+      accessToken: this.generateAccessToken(user._id.toString()),
+      refreshToken: this.generateRefreshToken(user._id.toString()),
     };
   }
 
@@ -48,11 +65,26 @@ export class AuthService {
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       throw new UnauthorizedException('Invalid credentials');
+      
     }
+
+  const accessToken = this.generateAccessToken(user._id.toString());
+  const refreshToken = this.generateRefreshToken(user._id.toString());
+    await this.users.updateRefreshToken(user._id.toString(), refreshToken);
 
     return {
       user,
-      token: this.generateToken(user._id.toString()),
+      accessToken: this.generateAccessToken(user._id.toString()),
+      refreshToken: this.generateRefreshToken(user._id.toString()),
+    };
+  }
+
+  // -------------------------
+  // REFRESH TOKEN
+  // -------------------------
+  async refresh(userId: string) {
+    return {
+      accessToken: this.generateAccessToken(userId),
     };
   }
 }

@@ -1,41 +1,64 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import axios from "axios";
+import { useRouter } from "next/navigation";
+import api from "@/lib/axios";
 import { initSocket, getSocket } from "@/lib/socket";
 import { Message } from "@/types/chat";
 
 export default function ChatPage() {
+  const router = useRouter();
+
   const [userId, setUserId] = useState<string | null>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState("");
   const [typingUser, setTypingUser] = useState<string | null>(null);
+  const [showMenu, setShowMenu] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const socketInitialized = useRef(false);
 
-  /* ---------------- LOAD USER ID ---------------- */
+  /* ---------------- AUTH CHECK ---------------- */
   useEffect(() => {
-    const id = localStorage.getItem("userId");
-    if (id) setUserId(id);
+    const token = localStorage.getItem("token");
+    const uid = localStorage.getItem("userId");
+
+    if (!token || !uid) {
+      router.replace("/login");
+      return;
+    }
+
+    setUserId(uid);
+    setLoading(false);
+  }, [router]);
+
+  /* ---------------- RESTORE LAST CHAT (🔥 NEW) ---------------- */
+  useEffect(() => {
+    const lastChat = localStorage.getItem("activeChatUserId");
+    if (lastChat) {
+      setSelectedUserId(lastChat);
+    }
   }, []);
 
   /* ---------------- LOAD USERS ---------------- */
   useEffect(() => {
-    axios.get("http://localhost:3001/user/all").then((res) => {
-      setUsers(res.data);
-    });
-  }, []);
+    if (!userId) return;
+    api.get("/user/all").then((res) => setUsers(res.data));
+  }, [userId]);
 
   /* ---------------- INIT SOCKET (ONCE) ---------------- */
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || socketInitialized.current) return;
 
-    const socket = initSocket(userId);
+    const socket = initSocket();
+    if (!socket) return;
+
+    socketInitialized.current = true;
 
     socket.on("chatMessages", (msgs: Message[]) => {
-      console.log("📦 history loaded:", msgs.length);
       setMessages(msgs);
     });
 
@@ -43,21 +66,10 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, msg]);
 
       if (msg.sender === selectedUserId) {
-        socket.emit("markSeen", {
-          userId,
-          otherUserId: selectedUserId,
-        });
+        socket.emit("markSeen", { otherUserId: selectedUserId });
       }
 
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    });
-
-    socket.on("seenUpdate", () => {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.sender === userId ? { ...m, seen: true } : m
-        )
-      );
     });
 
     socket.on("typing", ({ from }: { from: string }) => {
@@ -74,21 +86,17 @@ export default function ChatPage() {
         )
       );
     });
+  }, [userId, selectedUserId]);
 
-    // ❌ DO NOT DISCONNECT HERE
-  }, [userId]);
-
-  /* ---------------- OPEN CHAT (LOAD DB HISTORY) ---------------- */
+  /* ---------------- OPEN CHAT ---------------- */
   useEffect(() => {
     if (!userId || !selectedUserId) return;
 
-    const socket = getSocket();
-    if (!socket) return;
+    // 🔥 persist active chat
+    localStorage.setItem("activeChatUserId", selectedUserId);
 
-    setMessages([]); // clear previous chat
-
-    socket.emit("openChat", {
-      userId,
+    setMessages([]);
+    getSocket()?.emit("openChat", {
       otherUserId: selectedUserId,
     });
   }, [selectedUserId, userId]);
@@ -97,11 +105,7 @@ export default function ChatPage() {
   const sendMessage = () => {
     if (!text.trim() || !selectedUserId) return;
 
-    const socket = getSocket();
-    if (!socket) return;
-
-    socket.emit("sendMessage", {
-      sender: userId,
+    getSocket()?.emit("sendMessage", {
       receiver: selectedUserId,
       text,
     });
@@ -111,16 +115,63 @@ export default function ChatPage() {
 
   const selectedUser = users.find((u) => u._id === selectedUserId);
 
+  /* ---------------- LOADING ---------------- */
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-[#0b141a] text-white">
+        Loading chats...
+      </div>
+    );
+  }
+
   /* ---------------- UI ---------------- */
   return (
     <div className="flex h-screen bg-[#0b141a] text-white">
       {/* USERS LIST */}
       <div
-        className={`w-full sm:w-72 bg-[#111b21] border-r border-gray-700 overflow-y-auto ${
-          selectedUserId ? "hidden sm:block" : "block"
+        className={`w-full sm:w-72 bg-[#111b21] border-r border-gray-700 ${
+          selectedUserId ? "hidden sm:block" : ""
         }`}
       >
-        <h2 className="p-4 text-xl font-bold">Chats</h2>
+        <div className="flex items-center justify-between p-4">
+          <h2 className="text-xl font-bold">Chats</h2>
+
+          {/* PROFILE MENU */}
+          <div className="relative">
+            <div
+              onClick={() => setShowMenu(!showMenu)}
+              className="w-9 h-9 rounded-full bg-green-600 flex items-center justify-center cursor-pointer"
+            >
+              {users.find((u) => u._id === userId)?.username?.[0]?.toUpperCase()}
+            </div>
+
+            {showMenu && (
+              <div className="absolute right-0 mt-2 w-40 bg-[#202c33] rounded shadow-lg z-50">
+                <p
+                  onClick={() => router.push("/profile")}
+                  className="px-4 py-2 hover:bg-[#2a3942] cursor-pointer"
+                >
+                  Profile
+                </p>
+                <p
+                  onClick={() => router.push("/settings")}
+                  className="px-4 py-2 hover:bg-[#2a3942] cursor-pointer"
+                >
+                  Settings
+                </p>
+                <p
+                  onClick={() => {
+                    localStorage.clear();
+                    window.location.replace("/login");
+                  }}
+                  className="px-4 py-2 text-red-400 hover:bg-[#2a3942] cursor-pointer"
+                >
+                  Logout
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {users
           .filter((u) => u._id !== userId)
@@ -128,19 +179,17 @@ export default function ChatPage() {
             <div
               key={u._id}
               onClick={() => setSelectedUserId(u._id)}
-              className="p-4 border-b border-gray-800 cursor-pointer hover:bg-[#1f2c33]"
+              className="flex items-center gap-3 p-4 border-b border-gray-800 cursor-pointer hover:bg-[#1f2c33]"
             >
-              <p className="font-semibold">{u.username}</p>
-              <p className="text-xs text-gray-400">
-                {u.isOnline
-                  ? "online"
-                  : u.lastSeen
-                  ? `last seen ${new Date(u.lastSeen).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                  : ""}
-              </p>
+              <div className="w-10 h-10 rounded-full bg-[#2a3942] flex items-center justify-center">
+                {u.username[0].toUpperCase()}
+              </div>
+              <div>
+                <p className="font-semibold">{u.username}</p>
+                <p className="text-xs text-gray-400">
+                  {u.isOnline ? "online" : "offline"}
+                </p>
+              </div>
             </div>
           ))}
       </div>
@@ -151,24 +200,26 @@ export default function ChatPage() {
           {/* HEADER */}
           <div className="p-4 bg-[#202c33] border-b border-gray-600 flex items-center gap-3">
             <button
-              className="sm:hidden text-lg"
-              onClick={() => setSelectedUserId(null)}
+              className="sm:hidden"
+              onClick={() => {
+                setSelectedUserId(null);
+                localStorage.removeItem("activeChatUserId"); // 🔥 clear on back
+              }}
             >
               ←
             </button>
+
+            <div
+              onClick={() => router.push(`/profile/${selectedUserId}`)}
+              className="w-10 h-10 rounded-full bg-[#2a3942] flex items-center justify-center cursor-pointer"
+            >
+              {selectedUser?.username?.[0]?.toUpperCase()}
+            </div>
+
             <div>
               <p className="font-bold">{selectedUser?.username}</p>
               <p className="text-xs text-gray-300">
-                {selectedUser?.isOnline
-                  ? "online"
-                  : selectedUser?.lastSeen
-                  ? `last seen ${new Date(
-                      selectedUser.lastSeen
-                    ).toLocaleTimeString([], {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}`
-                  : ""}
+                {selectedUser?.isOnline ? "online" : "offline"}
                 {typingUser === selectedUserId && " • typing..."}
               </p>
             </div>
@@ -186,17 +237,6 @@ export default function ChatPage() {
                 }`}
               >
                 {m.text}
-                <div className="text-[10px] text-right mt-1 text-gray-300">
-                  {new Date(m.createdAt).toLocaleTimeString([], {
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                  {m.sender === userId && (
-                    <span className="ml-2">
-                      {m.seen ? "✔✔" : "✔"}
-                    </span>
-                  )}
-                </div>
               </div>
             ))}
             <div ref={bottomRef} />
@@ -208,10 +248,7 @@ export default function ChatPage() {
               value={text}
               onChange={(e) => {
                 setText(e.target.value);
-                getSocket()?.emit("typing", {
-                  from: userId,
-                  to: selectedUserId,
-                });
+                getSocket()?.emit("typing", { to: selectedUserId });
               }}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
               className="flex-1 p-3 bg-[#2a3942] rounded outline-none"

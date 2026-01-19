@@ -1,16 +1,17 @@
-import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
-import { JwtAccessGuard } from '../auth/guards/jwt-access.guard';
+import { Controller, Post, Body, Get } from '@nestjs/common';
+import { UserService } from './users.service';
 
-interface AuthenticatedRequest extends Request {
-  user: any;
-}
+@Controller('user')
+export class UserController {
+  constructor(private userService: UserService) {}
 
-@Controller('users')
-export class UsersController {
-  @UseGuards(JwtAccessGuard)
-  @Get('me')
-  getMe(@Req() req: AuthenticatedRequest) {
-    return req.user;
+  @Post('register')
+  async register(@Body() body: { username: string; password: string }) {
+    return this.userService.create(body);
+  }
+
+  @Get('all')
+  async all() {
+    return this.userService.getAllUsers();
   }
 }

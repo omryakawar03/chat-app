@@ -4,14 +4,34 @@ import { Model } from 'mongoose';
 import { User } from './schemas/user.schema';
 
 @Injectable()
-export class UsersService {
-  constructor(@InjectModel(User.name) private userModel: Model<User>) {}
+export class UserService {
+  constructor(
+    @InjectModel(User.name) private userModel: Model<User>,
+  ) {}
 
-  async findByEmail(email: string) {
-    return this.userModel.findOne({ email });
+  async create(data: any) {
+    return this.userModel.create(data);
   }
 
-  async create(email: string, password: string, name?: string) {
-    return this.userModel.create({ email, password, name });
+  async findByUsername(username: string) {
+    return this.userModel.findOne({ username });
+  }
+
+  async setOnline(userId: string) {
+    return this.userModel.findByIdAndUpdate(userId, {
+      isOnline: true,
+      lastSeen: null,
+    });
+  }
+
+  async setOffline(userId: string) {
+    return this.userModel.findByIdAndUpdate(userId, {
+      isOnline: false,
+      lastSeen: new Date(), // ✅ Date, not string
+    });
+  }
+
+  async getAllUsers() {
+    return this.userModel.find();
   }
 }

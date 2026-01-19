@@ -2,15 +2,20 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { MongooseModule } from '@nestjs/mongoose';
+import { UserModule } from './users/users.module';
 import { AuthModule } from './auth/auth.module';
+import { ChatModule } from './chat/chat.module';
 import { ConfigModule } from '@nestjs/config';
 
 @Module({
-  imports: [MongooseModule.forRoot('mongodb+srv://omryakawar:password01@cluster0.g6jqkpa.mongodb.net/chat-app?appName=Cluster0'), AuthModule,
-    ConfigModule.forRoot({ isGlobal: true , envFilePath: '.env' }),
-
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    MongooseModule.forRoot(process.env.MONGO_URI!),
+    UserModule,
+    AuthModule,
+    ChatModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [AppController, ],
+  providers: [AppService], // ❌ REMOVE ChatService here
 })
 export class AppModule {}
